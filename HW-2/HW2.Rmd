@@ -1,0 +1,254 @@
+---
+title: "Homework-2(STAT-6210)"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Question-1
+### Question-1(a)
+
+```{r, echo = FALSE, message = FALSE, warning=FALSE}
+dataset <- read.csv(
+  "/Users/shibaniroy/Documents/STAT 1st semester/STAT- 6210/HW-2/adult.csv",
+  sep = ";",
+  header = TRUE
+)
+```
+
+```{r, echo = TRUE, message = FALSE, warning=FALSE}
+names(dataset)
+str(dataset)
+summary(dataset)
+head(dataset)
+
+```
+
+### Question-1(b)
+
+```{r, echo = TRUE, message = FALSE, warning=FALSE}
+names(dataset)[names(dataset) == "NA."] <- "salary"
+
+names(dataset)
+str(dataset)
+```
+
+### Question-1(c)
+
+```{r, echo = TRUE, message = FALSE, warning=FALSE}
+dataset$salary <- substring(dataset$salary, 2)
+head(dataset$salary)
+unique(dataset$salary)
+```
+
+### Question-1(d)
+
+```{r, echo = TRUE, message = FALSE, warning=FALSE}
+dataset$salary <- factor(
+  ifelse(dataset$salary == ">50K", 1, 0),
+  levels = c(0, 1)
+)
+str(dataset$salary)
+table(dataset$salary)
+levels(dataset$salary)
+```
+
+### Question-1(e)
+
+```{r, echo = TRUE, message = FALSE, warning=FALSE}
+dataset[] <- lapply(dataset, function(x) {
+  if (is.character(x)) trimws(x) else x
+})
+
+fit <- glm(
+  formula = salary ~ .,
+  data = dataset,
+  family = binomial
+)
+summary(fit)
+```
+
+### Question-1(f)
+
+```{r, echo = TRUE, message = FALSE, warning=FALSE}
+fit_summary <- summary(fit)  
+
+var_names <- rownames(fit_summary$coefficients)
+coef_values <- fit_summary$coefficients[, "Estimate"]
+coef_positive <- coef_values > 0
+p_values <- fit_summary$coefficients[, "Pr(>|z|)"]
+
+result_matrix <- cbind(
+  Coefficient = coef_values,
+  Positive = coef_positive,
+  P_value = p_values
+)
+
+rownames(result_matrix) <- var_names
+
+result_matrix   
+```
+
+### Question-1(g)
+
+```{r, echo = TRUE, message = FALSE, warning=FALSE}
+#Subset to statistically significant rows (p < 0.05)
+sig_mat <- result_matrix[result_matrix[, "P_value"] < 0.05, ]
+sig_mat
+head(sig_mat)
+
+#Keep only significant rows with negative coefficients
+neg_sig <- sig_mat[sig_mat[, "Coefficient"] < 0, ]
+neg_sig
+rownames(neg_sig)
+```
+### Comment
+Among the statistically significant predictors, several variables exhibit negative coefficients, **indicating a lower probability of earning more than $50,000**. These include low educational attainment (7th–8th grade), being never married, and employment in lower-paying occupations such as farming–fishing, handlers–cleaners, other service, and private household service. Additionally, individuals classified as own-child in the household relationship variable and those from certain native-country categories (Columbia and South) are associated with reduced odds of high income. All effects are relative to their respective reference categories and are statistically significant at the 5% level.
+
+
+## Question-2
+
+```{r, echo = TRUE, message = FALSE, warning=FALSE}
+# Load necessary libraries
+library(quantmod)
+library(rvest)
+library(combinat)
+library(ggplot2)
+
+# Define stock symbols
+stocks_considered <- c("GOOGL", "AMZN", "AAPL", "MSFT")
+
+# Download stock data from Yahoo Finance from Oct 1, 2020, to Oct 1, 2024
+start_date <- "2020-10-01"
+end_date <- "2024-10-01"
+getSymbols(stocks_considered, src = 'yahoo', from = start_date, to = end_date)
+
+# Prepare stock price and return data
+returns <- na.omit(merge(ClCl(GOOGL), ClCl(AMZN), ClCl(AAPL), ClCl(MSFT)))
+colnames(returns) <- stocks_considered
+
+
+# Covariance matrix calculation
+cov_matrix <- cov(returns)
+
+# Function to compute optimal weights for three stocks
+optimal_weights <- function(sub_cov_matrix) {
+  ones <- rep(1, 3)
+  inverse_cov <- solve(sub_cov_matrix)
+  weights <- inverse_cov %*% ones / as.numeric(ones %*% inverse_cov %*% ones)
+  return(weights)
+}
+
+# Create portfolios of 3 stocks from the 4
+portfolios <- combn(stocks_considered, 3, simplify = FALSE)
+
+# Store portfolio results
+portfolio_results <- lapply(portfolios, function(portfolio) {
+  sub_returns <- returns[, portfolio]
+  sub_cov_matrix <- cov(sub_returns)
+  sub_expected_returns <- colMeans(sub_returns)
+  
+  # Compute optimal weights
+  w <- optimal_weights(sub_cov_matrix)
+  
+  # Compute expected return and variance
+  expected_return <- sum(w * sub_expected_returns) * 1e6
+  variance <- as.numeric(t(w) %*% sub_cov_matrix %*% w) * (1e6^2)
+  
+  list(portfolio = portfolio, weights = w, expected_return = expected_return, variance = variance)
+})
+
+#Store results from portfolios in matrices
+mu_returns <- cbind(mean(returns$GOOGL), mean(returns$AMZN), mean(returns$AAPL), mean(returns$MSFT))*1e6
+colnames(mu_returns) <- stocks_considered
+
+```
+### First Portfolio
+
+```{r, echo = TRUE, message = FALSE, warning=FALSE}
+#Investment 1
+  mu_returns1 <- mu_returns[-4]*portfolio_results[[1]]$weights
+  investment_summary1 <- matrix(NA, 3, 4)
+  dimnames(investment_summary1)[[1]] <- c("Weights", "Expected Returns", "Risk")
+  dimnames(investment_summary1)[[2]] <- c(portfolio_results[[1]]$portfolio, "Investment")
+  investment_summary1[1, ] <- c(portfolio_results[[1]]$weights, 1)
+  investment_summary1[2, ] <- c(mu_returns1, portfolio_results[[1]]$expected_return)
+  investment_summary1[3, ] <- c(cov_matrix[1,1], cov_matrix[2,2], cov_matrix[3,3], portfolio_results[[1]]$variance)
+  knitr::kable(investment_summary1)
+
+```
+
+### Second Portfolio
+
+```{r, echo = TRUE, message = FALSE, warning=FALSE}
+#Investment 2
+  mu_returns2 <- mu_returns[-3]*portfolio_results[[2]]$weights
+  investment_summary2 <- matrix(NA, 3, 4)
+  dimnames(investment_summary2)[[1]] <- c("Weights", "Expected Returns", "Risk")
+  dimnames(investment_summary2)[[2]] <- c(portfolio_results[[2]]$portfolio, "Investment")
+  investment_summary2[1, ] <- c(portfolio_results[[2]]$weights, 1)
+  investment_summary2[2, ] <- c(mu_returns2, portfolio_results[[2]]$expected_return)
+  investment_summary2[3, ] <- c(cov_matrix[1,1], cov_matrix[2,2], cov_matrix[4,4], portfolio_results[[2]]$variance)
+  knitr::kable(investment_summary2)
+
+```
+
+
+### Third Portfolio (minimum variance)
+```{r, echo = TRUE, message = FALSE, warning=FALSE}
+#Investment 3
+  mu_returns3 <- mu_returns[-2]*portfolio_results[[3]]$weights
+  investment_summary3 <- matrix(NA, 3, 4)
+  dimnames(investment_summary3)[[1]] <- c("Weights", "Expected Returns", "Risk")
+  dimnames(investment_summary3)[[2]] <- c(portfolio_results[[3]]$portfolio, "Investment")
+  investment_summary3[1, ] <- c(portfolio_results[[3]]$weights, 1)
+  investment_summary3[2, ] <- c(mu_returns3, portfolio_results[[3]]$expected_return)
+  investment_summary3[3, ] <- c(cov_matrix[1,1], cov_matrix[3,3], cov_matrix[4,4], portfolio_results[[3]]$variance)
+  knitr::kable(investment_summary3)
+
+```
+
+### Fourth Portfolio 
+```{r, echo = TRUE, message = FALSE, warning=FALSE}
+#Investment 4
+  mu_returns4 <- mu_returns[-1]*portfolio_results[[4]]$weights
+  investment_summary4 <- matrix(NA, 3, 4)
+  dimnames(investment_summary4)[[1]] <- c("Weights", "Expected Returns", "Risk")
+  dimnames(investment_summary4)[[2]] <- c(portfolio_results[[4]]$portfolio, "Investment")
+  investment_summary4[1, ] <- c(portfolio_results[[4]]$weights, 1)
+  investment_summary4[2, ] <- c(mu_returns4, portfolio_results[[4]]$expected_return)
+  investment_summary4[3, ] <- c(cov_matrix[2,2], cov_matrix[3,3], cov_matrix[4,4], portfolio_results[[4]]$variance)
+  knitr::kable(investment_summary4)
+  
+  # Find the minimum variance portfolio
+min_variance_portfolio <- portfolio_results[[which.min(sapply(portfolio_results, function(x) x$variance))]]
+
+# Prepare data for plotting
+plot_data <- do.call(rbind, lapply(portfolio_results, function(x) {
+  data.frame(
+    Portfolio = paste(x$portfolio, collapse = ", "),
+    Expected_Return = x$expected_return,
+    Risk = x$variance
+  )
+}))
+
+plot_data$Category <- ifelse(plot_data$Risk == min(plot_data$Risk),
+                                         "Min Risk Portfolio", "Possible Portfolios")
+
+```
+### Portfolio Risk vs. Expected Return Plot
+
+```{r, echo = TRUE, message = FALSE, warning=FALSE}
+# Plot using ggplot2 with better label positioning
+ggplot(plot_data, aes(x = Risk, y = Expected_Return, label = Portfolio, color = Category)) +
+  geom_point(size = 1) +
+  geom_text(vjust = 0.1, hjust = 0.3, size = 2, check_overlap = TRUE) +  
+  labs(title = "Portfolio Risk vs. Expected Return", 
+       x = "Risk (Variance)", 
+       y = "Expected Return") +
+  scale_color_manual(values = c("Min Risk Portfolio" = "red", "Possible Portfolios" = "blue")) +
+  xlim(min(plot_data$Risk) * 0.99, max(plot_data$Risk) * 1.01) +  # Widen x-axis
+  ylim(min(plot_data$Expected_Return) * 0.99, max(plot_data$Expected_Return) * 1.01) +  
+  theme_minimal(base_size = 12) +
+  theme(plot.title = element_text(hjust = 0.4, size = 14, face = "bold"))  

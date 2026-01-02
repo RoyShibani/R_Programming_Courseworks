@@ -1,0 +1,196 @@
+---
+title: "Portfolio Risk and Return Analysis"
+author: "Shibani Roy (Quantitative Analyst)"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Introduction
+
+In this report, we analyze and construct portfolios using stocks from four companies in the S&P 500 index: Google (GOOGL), Amazon (AMZN), Apple (AAPL), and Microsoft (MSFT). The goal is to find the portfolio with the lowest variance (risk) that satisfies the constraint of investing exclusively in three stocks from this group, with the total investment being $1,000,000.
+
+Negative weights are allowed, meaning short-selling is permitted. We compute the weights for each portfolio, calculate the expected returns and variance, and visualize these portfolios to identify the one with the minimum variance.
+
+### Step 1: Installing and Loading Necessary Libraries
+
+Before beginning the analysis, we install and load the required libraries. These include: - **`quantmod`**: _to fetch stock data_. - **`rvest`**: _to scrape stock symbols from the S&P 500 list_. - **`combinat`**: _to compute combinations of the stocks_. - **`ggplot`**: _to create visualizations_.
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+# Install necessary libraries (Uncomment if needed)
+# install.packages("quantmod")
+# install.packages("rvest")
+# install.packages("combinat")
+# install.packages("ggplot2")
+
+# Load libraries
+library(quantmod)
+library(rvest)
+library(combinat)
+library(ggplot2) 
+```
+### Step 2: Selecting Companies and Fetching Stock Data
+We consider four companies from the S&P 500: **Google, Amazon, Apple, and Microsoft**. We fetch historical data from Yahoo Finance for the period from **October 1, 2020, to October 1, 2024**.
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+# Define the four companies of interest
+stocks_considered <- c("GOOGL", "AMZN", "AAPL", "MSFT")
+
+# Define the date range
+start_date <- "2020-10-01"
+end_date <- "2024-10-01"
+
+# Download stock data using quantmod
+getSymbols(stocks_considered, src = 'yahoo', from = start_date, to = end_date)
+```
+
+### Step 3: Preparing Data and Calculating Returns
+In this step, we clean and prepare the stock data by merging the adjusted returns for each stock and adding column names.
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+# Prepare stock price and return data
+returns <- na.omit(merge(ClCl(GOOGL), ClCl(AMZN), ClCl(AAPL), ClCl(MSFT)))
+colnames(returns) <- stocks_considered
+```
+
+### Step 4: Constructing the Covariance Matrix and Optimizing Portfolio Weights
+Using the daily returns, we now calculate the covariance matrix of the returns. This matrix represents the co-movements between the stocks and is essential for computing the portfolio variance.
+
+We also create a function to calculate the optimal portfolio weights for a given covariance matrix, following the formula provided.
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+# Covariance matrix of the returns
+cov_matrix <- cov(returns)
+
+# Function to compute optimal weights for a 3-stock portfolio
+optimal_weights <- function(sub_cov_matrix) {
+  ones <- rep(1, 3)  # Create a vector of ones
+  inverse_cov <- solve(sub_cov_matrix)  # Invert the covariance matrix
+  weights <- inverse_cov %*% ones / as.numeric(ones %*% inverse_cov %*% ones)  # Compute weights
+  return(weights)
+}
+
+# Generate all possible portfolios (combinations of 3 stocks from the 4)
+portfolios <- combn(stocks_considered, 3, simplify = FALSE)
+```
+### Step 5: Calculating Portfolio Expected Returns and Risk (Variance)
+For each combination of 3 stocks, we calculate the expected return and the portfolio’s risk (variance). These are essential for evaluating each portfolio’s performance.
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+# Store portfolio results
+portfolio_results <- lapply(portfolios, function(portfolio) {
+  sub_returns <- returns[, portfolio]
+  sub_cov_matrix <- cov(sub_returns)
+  sub_expected_returns <- colMeans(sub_returns)
+  
+  # Compute optimal weights
+  w <- optimal_weights(sub_cov_matrix)
+  
+  # Compute expected return and variance (risk)
+  expected_return <- sum(w * sub_expected_returns) * 1e6  # Scale by $1,000,000 investment
+  variance <- as.numeric(t(w) %*% sub_cov_matrix %*% w) * (1e6^2)  # Scale by $1,000,000
+
+  list(portfolio = portfolio, weights = w, expected_return = expected_return, variance = variance)
+})
+```
+
+### Step 6: Identifying the Minimum Variance Portfolio
+We now identify the portfolio with the lowest risk (variance) among all possible portfolios.
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+# Find the minimum variance portfolio
+min_variance_portfolio <- portfolio_results[[which.min(sapply(portfolio_results, function(x) x$variance))]]
+
+# Display the minimum variance portfolio
+min_variance_portfolio
+```
+
+### Step 7: Visualizing the Results
+We visualize the expected return versus the risk (variance) for each portfolio through matrices and a plot. We highlight the portfolio with the minimum variance on the plot.
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+#Store results from portfolios in matrices
+#create a vector of mean daily returns for each stock individually
+mu_returns <- cbind(mean(returns$GOOGL), mean(returns$AMZN), mean(returns$AAPL), mean(returns$MSFT))*1e6
+colnames(mu_returns) <- stocks_considered
+
+#Investment 1
+  #Create a vector of means specifically for this portfolio by subtracting the stock that is not present and    multiplying by the weights
+  mu_returns1 <- mu_returns[-4]*portfolio_results[[1]]$weights
+  #Create an empty matrix
+  investment_summary1 <- matrix(NA, 3, 4)
+  #Create names for the rows and columns
+  dimnames(investment_summary1)[[1]] <- c("Weights", "Expected Returns", "Risk")
+  dimnames(investment_summary1)[[2]] <- c(portfolio_results[[1]]$portfolio, "Investment")
+  #Add in the weights, returns, and variance
+  investment_summary1[1, ] <- c(portfolio_results[[1]]$weights, 1)
+  investment_summary1[2, ] <- c(mu_returns1, portfolio_results[[1]]$expected_return)
+  investment_summary1[3, ] <- c(cov_matrix[1,1], cov_matrix[2,2], cov_matrix[3,3], portfolio_results[[1]]$variance)
+  #Present the table
+  knitr::kable(investment_summary1)
+  
+  #Investment 2
+  mu_returns2 <- mu_returns[-3]*portfolio_results[[2]]$weights
+  investment_summary2 <- matrix(NA, 3, 4)
+  dimnames(investment_summary2)[[1]] <- c("Weights", "Expected Returns", "Risk")
+  dimnames(investment_summary2)[[2]] <- c(portfolio_results[[2]]$portfolio, "Investment")
+  investment_summary2[1, ] <- c(portfolio_results[[2]]$weights, 1)
+  investment_summary2[2, ] <- c(mu_returns2, portfolio_results[[2]]$expected_return)
+  investment_summary2[3, ] <- c(cov_matrix[1,1], cov_matrix[2,2], cov_matrix[4,4], portfolio_results[[2]]$variance)
+  knitr::kable(investment_summary2)
+  
+  #Investment 3
+  mu_returns3 <- mu_returns[-2]*portfolio_results[[3]]$weights
+  investment_summary3 <- matrix(NA, 3, 4)
+  dimnames(investment_summary3)[[1]] <- c("Weights", "Expected Returns", "Risk")
+  dimnames(investment_summary3)[[2]] <- c(portfolio_results[[3]]$portfolio, "Investment")
+  investment_summary3[1, ] <- c(portfolio_results[[3]]$weights, 1)
+  investment_summary3[2, ] <- c(mu_returns3, portfolio_results[[3]]$expected_return)
+  investment_summary3[3, ] <- c(cov_matrix[1,1], cov_matrix[3,3], cov_matrix[4,4], portfolio_results[[3]]$variance)
+  knitr::kable(investment_summary3)
+  
+  #Investment 4
+  mu_returns4 <- mu_returns[-1]*portfolio_results[[4]]$weights
+  investment_summary4 <- matrix(NA, 3, 4)
+  dimnames(investment_summary4)[[1]] <- c("Weights", "Expected Returns", "Risk")
+  dimnames(investment_summary4)[[2]] <- c(portfolio_results[[4]]$portfolio, "Investment")
+  investment_summary4[1, ] <- c(portfolio_results[[4]]$weights, 1)
+  investment_summary4[2, ] <- c(mu_returns4, portfolio_results[[4]]$expected_return)
+  investment_summary4[3, ] <- c(cov_matrix[2,2], cov_matrix[3,3], cov_matrix[4,4], portfolio_results[[4]]$variance)
+  knitr::kable(investment_summary4)
+  
+  # Prepare data for plotting
+plot_data <- do.call(rbind, lapply(portfolio_results, function(x) {
+  data.frame(
+    Portfolio = paste(x$portfolio, collapse = ", "),
+    Expected_Return = x$expected_return,
+    Risk = x$variance
+  )
+}))
+
+plot_data$Category <- ifelse(plot_data$Risk == min(plot_data$Risk),
+                                         "Min Risk Portfolio", "Possible Portfolios")
+
+# Plot using ggplot2 with better label positioning
+ggplot(plot_data, aes(x = Risk, y = Expected_Return, label = Portfolio, color = Category)) +
+  geom_point(size = 1) +
+  geom_text(vjust = 0.1, hjust = 0.3, size = 2, check_overlap = TRUE) +  # Adjust label position and size
+  labs(title = "Portfolio Risk vs. Expected Return", 
+       x = "Risk (Variance)", 
+       y = "Expected Return") +
+  scale_color_manual(values = c("Min Risk Portfolio" = "red", "Possible Portfolios" = "blue")) +
+  xlim(min(plot_data$Risk) * 0.99, max(plot_data$Risk) * 1.01) +  # Widen x-axis
+  ylim(min(plot_data$Expected_Return) * 0.99, max(plot_data$Expected_Return) * 1.01) +  # Widen y-axis
+  theme_minimal(base_size = 12) +
+  theme(plot.title = element_text(hjust = 0.4, size = 14, face = "bold"))  # Center the title and make it bold
+```
+
+### Conclusion
+In this analysis, we evaluated various stock portfolios using three stocks out of four major companies: Google, Amazon, Apple, and Microsoft. We computed the expected returns and variance (risk) for each portfolio and identified the portfolio with the minimum variance.
+
+
+
+
+
